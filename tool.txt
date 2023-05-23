@@ -18,7 +18,7 @@ import time
 
 
 # Chrome's PATH
-profile_path = '/Users/miyoshi13pro/Library/Application Support/Google/Chrome/Profile 1'
+profile_path = 'User info'
 
 # Always keep Chrome up to date
 options = webdriver.chrome.options.Options()
@@ -92,12 +92,12 @@ def main():
 
     # set credentials
     # Set the downloaded json file name to the credential variable
-    credentials = ServiceAccountCredentials.from_json_keyfile_name('mercari.json', scope)
+    credentials = ServiceAccountCredentials.from_json_keyfile_name('file.name', scope)
 
     # Log in to the Google API using your OAuth2 credentials.
     gc = gspread.authorize(credentials)
 
-    workbook = gc.open_by_key('1-CTOb4sJCQ9exeO2vmr7gNCXDkOofJWHzgwi0D0Cl-A')
+    workbook = gc.open_by_key('key')
 
     worksheet = workbook.sheet1
 
