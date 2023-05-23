@@ -1,0 +1,148 @@
+from selenium import webdriver
+from selenium.webdriver.chrome.service import Service
+from selenium.webdriver.common.by import By
+from selenium.webdriver.chrome.service import Service as ChromeService
+from webdriver_manager.chrome import ChromeDriverManager
+from selenium.webdriver.support.ui import WebDriverWait
+from selenium.webdriver.support import expected_conditions as EC
+import requests
+from bs4 import BeautifulSoup
+import gspread
+from oauth2client.service_account import ServiceAccountCredentials
+import json
+import time
+
+""" This is a tool for mercari which edit prices of the products for sale which is listing.
+   This is a tool that writes the URLs of all the products that are currently listed in a spreadsheet, 
+   converts the URLs into URLs for editing products, and then changes the prices one by one. """
+
+
+# Chrome's PATH
+profile_path = '/Users/miyoshi13pro/Library/Application Support/Google/Chrome/Profile 1'
+
+# Always keep Chrome up to date
+options = webdriver.chrome.options.Options()
+options.add_argument('--user-data-dir=' + profile_path)
+driver_service = ChromeService(executable_path=ChromeDriverManager().install())
+browser = webdriver.Chrome(service=driver_service, options=options)
+browser.implicitly_wait(10)
+
+#View all items for sale
+def all_visible_listing(url):
+    browser.get(url)
+
+    while True:
+        try:
+            more_listing = browser.find_elements(By.XPATH,
+                                                 "//div[@class='merButton secondary__f49ba1aa medium__f49ba1aa fluid"
+                                                 "__f49ba1aa sc-bcb083e9-0 llCJhx']/button")
+
+            more_listing[0].click()
+
+            if not more_listing:
+                break
+
+        except:
+            break
+
+# Get all the URLs of the products on sale
+def item_id_get(url):
+    urls = []
+    index = 1
+    while True:
+        xpath = "//*[@id='currentListing']/div[1]/div[{}]/div[2]/a".format(index)
+        items = browser.find_elements(By.XPATH, xpath)
+
+        if not items:
+            break
+
+        for item in items:
+            item_url = item.get_attribute('href')
+            urls.append(item_url)
+
+        index += 1
+
+    return urls
+
+# minus product price by 100 yen
+def item_edit(url):
+
+    edit_price = browser.find_elements(By.XPATH, "//div[@class='mer-text-input-container']/"
+                                                 "input[@class='input-node no-spin-button with-prefix-label']")
+
+    for update_price in edit_price:
+        current_price = int(update_price.get_attribute('value'))
+        new_price = current_price - 100
+        update_price.clear()
+        time.sleep(1)
+        update_price.send_keys(int(new_price))
+
+    edit_button = browser.find_elements(By.XPATH, "//div[@class='merButton primary__f49ba1aa medium__f49ba1aa "
+                                                  "fluid__f49ba1aa sc-d2d15348-0 gEKTUl mer-spacing-t-24']/button")
+    edit_button[0].click()
+
+
+
+
+
+
+def main():
+    # If you don't write two APIs, you have to keep issuing refresh tokens every 3600 seconds
+    scope = ['https://spreadsheets.google.com/feeds', 'https://www.googleapis.com/auth/drive']
+
+    # set credentials
+    # Set the downloaded json file name to the credential variable
+    credentials = ServiceAccountCredentials.from_json_keyfile_name('mercari.json', scope)
+
+    # Log in to the Google API using your OAuth2 credentials.
+    gc = gspread.authorize(credentials)
+
+    workbook = gc.open_by_key('1-CTOb4sJCQ9exeO2vmr7gNCXDkOofJWHzgwi0D0Cl-A')
+
+    worksheet = workbook.sheet1
+
+    url = 'https://jp.mercari.com/mypage/listings/'
+    url_list = []  # List of temporary storage of URLs
+    all_visible_listing(url)
+    item_id_get(url)
+    urls = item_id_get(url)
+    for url in urls:
+        url_list.append(url)
+        if len(url_list) >= 10:  # Write when 10 URLs are accumulated
+            worksheet.append_rows([[url] for url in url_list])
+            url_list = []  # Initialize list
+        time.sleep(1)
+
+    if url_list:
+        worksheet.append_rows([[url] for url in url_list])
+
+    item_url = worksheet.col_values(1)
+
+# Batch conversion of all acquired URLs to URLs for product editing
+    urls_to_update = []
+    for edit_url in item_url:
+        new_url = edit_url.replace('/item/', '/sell/edit/')
+        urls_to_update.append([new_url])
+
+    start_row = 1  # Specify start line
+    end_row = start_row + len(urls_to_update) - 1  # Calculate end row
+    cell_range = 'A{}:A{}'.format(start_row, end_row)
+    cell_list = worksheet.range(cell_range)
+
+    for i, cell in enumerate(cell_list):
+        cell.value = urls_to_update[i][0]
+
+    worksheet.update_cells(cell_list)
+
+    nexu_url = worksheet.col_values(1)
+# Execute price reduction for all products
+    for url in nexu_url:
+        browser.get(url)
+        item_edit(url)
+        time.sleep(1)
+
+    browser.quit()
+
+
+if __name__ == '__main__':
+    main()
